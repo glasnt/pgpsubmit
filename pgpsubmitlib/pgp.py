@@ -85,6 +85,35 @@ class Keyring(object):
         )
         return gpg.communicate(text)
 
+    def with_fingerprint(self,text):
+        """Get fingerprint from text, *without* importing it into the keyring"""
+        gpg = subprocess.Popen(
+            [self.executable, '--with-fingerprint'],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=self.environ
+        )
+        return gpg.communicate(text)
+
+    def key_type(self,text):
+        """Return the type of key we are seeing
+           pub  4096R/AABBCCDDEE 2011-11-11
+                ^^^^^                            """
+        stdout, stderr = self.with_fingerprint(text)
+        pattern = re.compile("^pub(\s*)(.+?)/")
+        lines = [l for l in stdout.splitlines() if pattern.match(l)]
+        keytype = pattern.findall(lines[0])[0][1]
+        return keytype
+
+    def valid_key(self,text):
+        """ Return true if key_type of text is not on the restricted list """
+        keytype = self.key_type(text)
+        restricted = self._environ.get("RESTRICTEDTYPES","").split(",")
+        if keytype in restricted:
+            return False
+        return True
+
     def process_environ(self):
         """Add the submitted key, returning HTML."""
         div = html.Div()
@@ -104,10 +133,15 @@ class Keyring(object):
         if text:
             div.add_child(html.H1('Submission result'))
             if self.count_keys(text) <= 1:
-                stdout, stderr = self.import_keys(text)
-                pattern = re.compile('^gpg: (?!WARNING)')
-                lines = (l for l in stderr.splitlines() if pattern.match(l))
-                div.add_child(html.Pre('\n'.join(lines)))
+                if self.valid_key(text):
+                    stdout, stderr = self.import_keys(text)
+                    pattern = re.compile('^gpg: (?!WARNING)')
+                    lines = (l for l in stderr.splitlines() if pattern.match(l))
+                    div.add_child(html.Pre('\n'.join(lines)))
+                else:
+                    div.add_child(
+                        html.P("ERROR: Restricted Key Type - not accepting keys of type %s" % self.key_type(text))
+                    )
             else:
                 div.add_child(
                     html.P("ERROR: Keys must be submitted one at a time.")

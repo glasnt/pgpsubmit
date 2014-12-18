@@ -59,6 +59,11 @@ submission deadlines:
   environment variable (to any value) causes these links to be shown
   regardless of whether or not the deadline has passed.
 
+``RESTRICTEDTYPES``
+  A comma-delimited list of keytypes that will not be accepted. Types are
+  defined as the type in the output of a fingerprint identifer for the key
+  For example, disabling 2048-RSA keys and 1024DSA keys: ``2048R,1024D``
+
 A configuration for Apache with mod_wsgi might be::
 
     <Directory /usr/home/joe/pgpsubmit>
