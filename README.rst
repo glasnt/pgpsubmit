@@ -59,10 +59,15 @@ submission deadlines:
   environment variable (to any value) causes these links to be shown
   regardless of whether or not the deadline has passed.
 
-``RESTRICTEDTYPES``
-  A comma-delimited list of keytypes that will not be accepted. Types are
-  defined as the type in the output of a fingerprint identifer for the key
-  For example, disabling 2048-RSA keys and 1024DSA keys: ``2048R,1024D``
+``RESTRICTEDALGORITHM``
+  A comma-delimited list of public key algorithms to be restricted. 
+  Obtained by executing ``gpg --with-colon`` on imported key. ID to Type mapping
+  list in ``pgpsubmitlib/gpg.py``
+  Example setting: ``17`` will restrict any DSA-encrypted keys from being imported
+
+``MINIMUMLENGTH``
+  The minimum key-length of any imported key. For example, setting to ``4096`` will
+  only allow keys 4096bits or larger to be imported 
 
 A configuration for Apache with mod_wsgi might be::
 
@@ -81,6 +86,8 @@ A configuration for Apache with mod_wsgi might be::
         SetEnv GNUPGHOME /usr/home/joe/.pgpsubmit
         SetEnv PGPSUBMITSOURCEURL https://github.com/frasertweedale/pgpsubmit
         SetEnv PGPSUBMITUNTIL 2011.12.31.18.30
+        SetEnv MINIMUMLENGTH 2048
+        SetEnv RESTRICTEDALGORITHM 17,18,19
     </VirtualHost>
 
 

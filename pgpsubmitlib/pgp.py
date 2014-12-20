@@ -19,9 +19,33 @@ import os
 import re
 import subprocess
 import urlparse
-
 from . import html
 
+# Public Key Algorithm ID to Type. https://github.com/kazu-yamamoto/pgpdump/blob/master/types.c#L36
+PUB_ALGS = [
+    "unknown (pub 0)",
+    "RSA Encrypt or Sign",
+    "RSA Encrypt-Only",
+    "RSA Sign-Only",
+    "unknown (pub 4)",
+    "unknown (pub 5)",
+    "unknown (pub 6)",
+    "unknown (pub 7)",
+    "unknown (pub 8)",
+    "unknown (pub 9)",
+    "unknown (pub 10)",
+    "unknown (pub 11)",
+    "unknown (pub 12)",
+    "unknown (pub 13)",
+    "unknown (pub 14)",
+    "unknown (pub 15)",
+    "ElGamal Encrypt-Only",
+    "DSA Digital Signature Algorithm",
+    "Reserved for Elliptic Curve",
+    "Reserved for ECDSA",
+    "Reserved formerly ElGamal Encrypt or Sign",
+    "Reserved for Diffie-Hellman",
+]
 
 def paragraphs(lines):
     """Given iterable of lines, yield paragraphs of joined lines."""
@@ -85,34 +109,40 @@ class Keyring(object):
         )
         return gpg.communicate(text)
 
-    def with_fingerprint(self,text):
-        """Get fingerprint from text, *without* importing it into the keyring"""
+    def inspect_key(self,text):
+        """ Inspect the key and return algorithm type and length
+        Uses --with-colon to inspect key
+        Uses --with-fingerprint to not import the key at this time (still inspecting for validility)"""
         gpg = subprocess.Popen(
-            [self.executable, '--with-fingerprint'],
+            [self.executable, '--with-colon', '--with-fingerprint'],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=self.environ
         )
-        return gpg.communicate(text)
-
-    def key_type(self,text):
-        """Return the type of key we are seeing
-           pub  4096R/AABBCCDDEE 2011-11-11
-                ^^^^^                            """
-        stdout, stderr = self.with_fingerprint(text)
-        pattern = re.compile("^pub(\s*)(.+?)/")
+        stdout, stderr = gpg.communicate(text)
+        pattern = re.compile("^pub")
         lines = [l for l in stdout.splitlines() if pattern.match(l)]
-        keytype = pattern.findall(lines[0])[0][1]
-        return keytype
+        pub = lines[0].split(":")
+        algorithm = pub[3]
+        if algorithm in ['18', '19', '22']: 
+            length = pub[16]
+        else: 
+            length = pub[2]
+    
+        return {"algorithm": algorithm, "length": length}
 
     def valid_key(self,text):
         """ Return true if key_type of text is not on the restricted list """
-        keytype = self.key_type(text)
-        restricted = self._environ.get("RESTRICTEDTYPES","").split(",")
-        if keytype in restricted:
-            return False
-        return True
+        key = self.inspect_key(text)
+        restricted = self._environ.get("RESTRICTEDALGORITHMS","").split(",")
+        minimum_length = int(self._environ.get("MINIMUMLENGTH",0))
+        if key["algorithm"] in restricted:
+            return False, "Restricted Algorithm: %s" % PUB_ALGS[int(key["algorithm"])]
+        if key["length"] < minimum_length: 
+            return False, "Key length shorter than minimum of %d" % minimum_length
+
+        return True, ""
 
     def process_environ(self):
         """Add the submitted key, returning HTML."""
@@ -133,14 +163,15 @@ class Keyring(object):
         if text:
             div.add_child(html.H1('Submission result'))
             if self.count_keys(text) <= 1:
-                if self.valid_key(text):
+                valid, errmsg = self.valid_key(text) 
+                if valid:
                     stdout, stderr = self.import_keys(text)
                     pattern = re.compile('^gpg: (?!WARNING)')
                     lines = (l for l in stderr.splitlines() if pattern.match(l))
                     div.add_child(html.Pre('\n'.join(lines)))
                 else:
                     div.add_child(
-                        html.P("ERROR: Restricted Key Type - not accepting keys of type %s" % self.key_type(text))
+                        html.P("ERROR: %s. Not importing key." % errmsg)
                     )
             else:
                 div.add_child(
