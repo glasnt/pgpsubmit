@@ -47,6 +47,9 @@ PUB_ALGS = [
     "Reserved for Diffie-Hellman",
 ]
 
+# ECC Curve equivelent RSA Lenegth. https://tools.ietf.org/html/rfc6637#section-13
+ECC_EQUIV_LENGTH = { "256": 3072, "384": 7680, "521": 15360}
+
 def paragraphs(lines):
     """Given iterable of lines, yield paragraphs of joined lines."""
     para = []
@@ -63,7 +66,6 @@ def paragraphs(lines):
 def get_key_id(para):
     """Extract the key ID from the given paragraph."""
     return re.match(r'pub\s+\w+/([\dA-F]*)', para).group(1)
-
 
 class Keyring(object):
     """GnuPG keyring interface.
@@ -125,8 +127,9 @@ class Keyring(object):
         lines = [l for l in stdout.splitlines() if pattern.match(l)]
         pub = lines[0].split(":")
         algorithm = pub[3]
-        if algorithm in ['18', '19', '22']: 
-            length = pub[16]
+        if algorithm in ["18", "19", "22"]: #ECC Curve, find equiv. length 
+            curve = pub[2]
+            length = ECC_EQUIV_LENGTH[curve]
         else: 
             length = pub[2]
     
